@@ -35,17 +35,14 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet && git diff --staged --quiet && [ -z "$(git status --porcelain)" ]; then
-            echo "no changes to commit"
-            exit 0
-          fi
-          # snapshot filename = the archived file's own date field
-          added=$(git status --porcelain | awk '/^\?\?/ {print $2}' | grep -E 'snapshots/.+\.csv$' | head -1 || true)
-          if [ -z "$added" ]; then
-            echo "nothing under snapshots/ changed"
-            exit 0
-          fi
           git add snapshots/
+          if git diff --cached --quiet; then
+            echo "no new snapshot this run"
+            exit 0
+          fi
+          # Pick up the first added/modified CSV to derive the commit message.
+          added=$(git diff --cached --name-only --diff-filter=AM \
+                  | grep -E 'snapshots/.+\.csv$' | head -1)
           filename=$(basename "$added" .csv)
           git commit -m "data: archive TDCC snapshot ${filename}"
           git push
