@@ -1,0 +1,51 @@
+name: Weekly TDCC snapshot
+
+on:
+  schedule:
+    # Daily at 02:00 UTC = 10:00 CST.
+    # TDCC publishes weekly on Fridays; running daily is a zero-cost safety
+    # net against a TDCC release delay. The download script is idempotent —
+    # if the current snapshot is already archived, no commit is created.
+    - cron: "0 2 * * *"
+  workflow_dispatch:   # manual trigger from the Actions tab
+
+permissions:
+  contents: write   # needed to push new snapshots back to main
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install requests pandas
+
+      - name: Download current week snapshot
+        id: download
+        run: python scripts/download.py
+
+      - name: Commit new snapshot if any
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet && git diff --staged --quiet && [ -z "$(git status --porcelain)" ]; then
+            echo "no changes to commit"
+            exit 0
+          fi
+          # snapshot filename = the archived file's own date field
+          added=$(git status --porcelain | awk '/^\?\?/ {print $2}' | grep -E 'snapshots/.+\.csv$' | head -1 || true)
+          if [ -z "$added" ]; then
+            echo "nothing under snapshots/ changed"
+            exit 0
+          fi
+          git add snapshots/
+          filename=$(basename "$added" .csv)
+          git commit -m "data: archive TDCC snapshot ${filename}"
+          git push
